@@ -1,0 +1,21 @@
+{
+  "logical_models": {
+    "rapido":  [{ "destination": "curso", "model": "fast" }],
+    "potente": [
+      { "destination": "curso", "model": "chaos" },
+      { "destination": "curso_anthropic", "model": "fast" }
+    ]
+  },
+  "destinations": {
+    "curso": {
+      "format": "openai",
+      "base_url_env": "OPENAI_BASE_URL",
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "curso_anthropic": {
+      "format": "anthropic",
+      "base_url_env": "ANTHROPIC_BASE_URL",
+      "api_key_env": "ANTHROPIC_API_KEY"
+    }
+  }
+}
