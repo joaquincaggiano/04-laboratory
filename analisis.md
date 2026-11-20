@@ -8,6 +8,7 @@ Tuve que crear un adaptador nuevo para manejar el caso de Anthropic y registrar 
 
 - **`maxTokens`.** Es opcional en OpenAI pero obligatorio en Anthropic, así que la respuesta puede variar según el modelo que responda. Pondría un valor por defecto en el contrato, para que se aplique igual cuando no se pasa el dato.
 - **`stopReason`.** Ahora es muy general. Lo mejoraría para cubrir mejor los distintos motivos de parada de cada proveedor.
+- **`stream`.** Hoy el contrato no maneja respuestas en streaming. Agregaría una propiedad `stream` a la petición para poder recibir la respuesta por partes.
 
 ## 2. Por qué un 400 no debe activar el fallback
 
