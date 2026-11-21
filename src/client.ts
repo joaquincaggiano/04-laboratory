@@ -4,10 +4,11 @@ import { createAnthropicAdapter } from "./adapters/anthropicAI.adapter.js";
 import { createOpenAIAdapter } from "./adapters/openAI.adapter.js";
 import { LLMError } from "./contracts.js";
 import type {
-  LLMAdapter,
+  DestinationAdapter,
   LLMClient,
   LLMRequest,
   LLMResponse,
+  StreamEvent,
 } from "./contracts.js";
 
 dotenv.config({ quiet: true });
@@ -22,7 +23,7 @@ export interface Config {
 
 const factories: Record<
   string,
-  (options: { baseUrl: string; apiKey: string }) => LLMAdapter
+  (options: { baseUrl: string; apiKey: string }) => DestinationAdapter
 > = {
   openai: createOpenAIAdapter,
   anthropic: createAnthropicAdapter,
@@ -41,7 +42,7 @@ function env(name: string): string {
 }
 
 export function createClient(config: Config = loadConfig()): LLMClient {
-  const adapters = new Map<string, LLMAdapter>();
+  const adapters = new Map<string, DestinationAdapter>();
 
   for (const [name, d] of Object.entries(config.destinations)) {
     const factory = factories[d.format];
@@ -65,7 +66,7 @@ export function createClient(config: Config = loadConfig()): LLMClient {
         try {
           const adapter = adapters.get(destination)!;
 
-          const response = await adapter({
+          const response = await adapter.complete({
             ...request,
             model,
           });
@@ -75,6 +76,38 @@ export function createClient(config: Config = loadConfig()): LLMClient {
           // Error de la petición (400...) o un bug: fallaría igual en otro destino, no se prueba el siguiente.
           if (!(err instanceof LLMError) || err.kind === "request") throw err;
           // Error pasajero (429, 5xx, timeout): siguiente destino de la lista.
+          failures.push(
+            `${destination}/${model} [${err.status ?? "sin status"}] ${err.message}`,
+          );
+        }
+      }
+      throw new Error(
+        `Todos los destinos fallaron:\n  ${failures.join("\n  ")}`,
+      );
+    },
+
+    async *stream(request: LLMRequest): AsyncGenerator<StreamEvent> {
+      const targets = config.logical_models[request.model];
+      if (!targets)
+        throw new Error(`Modelo lógico desconocido: "${request.model}"`);
+
+      const failures: string[] = [];
+      for (const { destination, model } of targets) {
+        const events = adapters.get(destination)!.stream({ ...request, model });
+        let started = false;
+
+        try {
+          for await (const event of events) {
+            started = true;
+            yield event.type === "done"
+              ? { type: "done", response: { ...event.response, destination } }
+              : event;
+          }
+          return;
+        } catch (err) {
+          // Con texto ya emitido no se puede cambiar de destino: se propaga.
+          if (started || !(err instanceof LLMError) || err.kind === "request")
+            throw err;
           failures.push(
             `${destination}/${model} [${err.status ?? "sin status"}] ${err.message}`,
           );

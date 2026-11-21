@@ -30,9 +30,30 @@ export type AdapterResponse = Omit<LLMResponse, "destination">;
 
 export type LLMAdapter = (request: LLMRequest) => Promise<AdapterResponse>;
 
+/** Evento de un stream: fragmentos de texto y, al final, la respuesta completa. */
+export type StreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; response: LLMResponse };
+
+/** Igual que StreamEvent, pero el `done` del adaptador no conoce el destino. */
+export type AdapterStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; response: AdapterResponse };
+
+export type LLMStreamAdapter = (
+  request: LLMRequest,
+) => AsyncIterable<AdapterStreamEvent>;
+
+/** Lo que construye cada fábrica de adaptadores: una capacidad por método. */
+export interface DestinationAdapter {
+  complete: LLMAdapter;
+  stream: LLMStreamAdapter;
+}
+
 /** Lo único que necesita la aplicación (p. ej. el resumidor). */
 export interface LLMClient {
   complete(request: LLMRequest): Promise<LLMResponse>;
+  stream(request: LLMRequest): AsyncIterable<StreamEvent>;
 }
 
 // ---------------------------------------------------------------- errores

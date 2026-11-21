@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { llmErrorFromStatus } from "../contracts.js";
-import type { LLMAdapter, StopReason } from "../contracts.js";
+import type { DestinationAdapter, StopReason } from "../contracts.js";
 
 export interface AdapterOptions {
   baseUrl: string;
@@ -23,7 +23,7 @@ export function createOpenAIAdapter({
   baseUrl,
   apiKey,
   timeoutMs = 20_000,
-}: AdapterOptions): LLMAdapter {
+}: AdapterOptions): DestinationAdapter {
   // maxRetries: 0 -> los reintentos los controla el cliente, no el SDK.
   const client = new OpenAI({
     baseURL: baseUrl,
@@ -32,7 +32,7 @@ export function createOpenAIAdapter({
     timeout: timeoutMs,
   });
 
-  return async (request) => {
+  const complete: DestinationAdapter["complete"] = async (request) => {
     try {
       const response = await client.chat.completions.create({
         model: request.model,
@@ -61,4 +61,64 @@ export function createOpenAIAdapter({
       throw err;
     }
   };
+
+  const stream: DestinationAdapter["stream"] = async function* (request) {
+    try {
+      const events = await client.chat.completions.create({
+        model: request.model,
+        messages: [
+          { role: "system", content: request.systemPrompt },
+          ...request.messages,
+        ],
+        max_tokens: request.maxTokens,
+        stream: true,
+        stream_options: { include_usage: true }, // sin esto no llega `usage`
+      });
+
+      let text = "";
+      let model = request.model;
+      let finishReason: string | null | undefined;
+      let usage: { prompt: number; completion: number; total: number } = {
+        prompt: 0,
+        completion: 0,
+        total: 0,
+      };
+
+      for await (const chunk of events) {
+        model = chunk.model ?? model;
+        const choice = chunk.choices[0];
+        const delta = choice?.delta.content;
+        if (delta) {
+          text += delta;
+          yield { type: "delta", text: delta };
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+        // El chunk con usage llega al final, con `choices` vacío.
+        if (chunk.usage)
+          usage = {
+            prompt: chunk.usage.prompt_tokens,
+            completion: chunk.usage.completion_tokens,
+            total: chunk.usage.total_tokens,
+          };
+      }
+
+      yield {
+        type: "done",
+        response: {
+          text,
+          stopReason: mapStopReason(finishReason),
+          inputTokens: usage.prompt,
+          outputTokens: usage.completion,
+          totalTokens: usage.total,
+          model,
+        },
+      };
+    } catch (err) {
+      if (err instanceof OpenAI.APIError)
+        throw llmErrorFromStatus(err.message, err.status, err);
+      throw err;
+    }
+  };
+
+  return { complete, stream };
 }

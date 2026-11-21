@@ -1,7 +1,7 @@
 import { LLMError } from "./src/contracts.js";
-import type { LLMRequest, LLMResponse } from "./src/contracts.js";
+import type { LLMRequest, LLMResponse, StreamEvent } from "./src/contracts.js";
 import { createClient, loadConfig } from "./src/client.js";
-import { summarize } from "./src/summarizer.js";
+import { summarize, summarizeStream } from "./src/summarizer.js";
 
 // Destino que no existe: conexión rechazada = error pasajero gratis y determinista.
 process.env.DEAD_URL = "http://127.0.0.1:1/v1";
@@ -48,6 +48,18 @@ function show(r: LLMResponse) {
     `   ✔ destino=${r.destination} modelo=${r.model} stop=${r.stopReason} tokens=${r.inputTokens}+${r.outputTokens}=${r.totalTokens}`,
   );
   console.log(`     texto: ${r.text}`);
+}
+
+/** Imprime los fragmentos según llegan y, al final, el resumen de la respuesta. */
+async function showStream(events: AsyncIterable<StreamEvent>) {
+  process.stdout.write("     texto: ");
+  for await (const e of events) {
+    if (e.type === "delta") process.stdout.write(e.text);
+    else {
+      console.log();
+      show(e.response);
+    }
+  }
 }
 
 // `npm run demo -- 3` ejecuta solo la comprobación 3; sin argumento, todas.
@@ -101,6 +113,27 @@ await check("5. todos los destinos caídos: error final", async () => {
 await check("6. resumidor (solo usa el cliente)", async () => {
   show(
     await summarize(
+      client,
+      "Un cliente LLM propio separa la aplicación de los proveedores mediante un contrato común, adaptadores por formato y un plan de fallbacks guiado por configuración.",
+    ),
+  );
+});
+
+await check("7. stream: rapido entrega fragmentos y un done final", async () => {
+  await showStream(client.stream(ask("rapido")));
+});
+
+await check("8. stream: mismo contrato desde el formato Anthropic", async () => {
+  await showStream(client.stream(ask("solo_anthropic")));
+});
+
+await check("9. stream: todos los destinos caídos: error final", async () => {
+  await showStream(client.stream(ask("todo_caido")));
+});
+
+await check("10. resumidor en stream (solo usa el cliente)", async () => {
+  await showStream(
+    summarizeStream(
       client,
       "Un cliente LLM propio separa la aplicación de los proveedores mediante un contrato común, adaptadores por formato y un plan de fallbacks guiado por configuración.",
     ),
