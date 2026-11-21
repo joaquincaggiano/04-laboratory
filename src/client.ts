@@ -22,7 +22,7 @@ export interface Config {
 
 const factories: Record<
   string,
-  (o: { baseUrl: string; apiKey: string }) => LLMAdapter
+  (options: { baseUrl: string; apiKey: string }) => LLMAdapter
 > = {
   openai: createOpenAIAdapter,
   anthropic: createAnthropicAdapter,
@@ -63,10 +63,13 @@ export function createClient(config: Config = loadConfig()): LLMClient {
       const failures: string[] = [];
       for (const { destination, model } of targets) {
         try {
-          const response = await adapters.get(destination)!({
+          const adapter = adapters.get(destination)!;
+
+          const response = await adapter({
             ...request,
             model,
           });
+
           return { ...response, destination };
         } catch (err) {
           // Error de la petición (400...) o un bug: fallaría igual en otro destino, no se prueba el siguiente.

@@ -47,7 +47,7 @@ function show(r: LLMResponse) {
   console.log(
     `   ✔ destino=${r.destination} modelo=${r.model} stop=${r.stopReason} tokens=${r.inputTokens}+${r.outputTokens}=${r.totalTokens}`,
   );
-  console.log(`     texto: ${JSON.stringify(r.text)}`);
+  console.log(`     texto: ${r.text}`);
 }
 
 // `npm run demo -- 3` ejecuta solo la comprobación 3; sin argumento, todas.
